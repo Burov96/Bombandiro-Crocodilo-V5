@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title> 🐊🚁 Bombandiro Crocodilo V5</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; }
+        canvas { display: block; border: 1px solid black; margin: 20px auto; cursor: pointer; }
+        #controls { text-align: center; margin-top: 10px; font-family: sans-serif; }
+    </style>
+</head>
+<body>
+
+<div id="controls">Използвайте стрелките за да контролирате Bombandiro Crocodilo и space за да хвърлите опустошителен снаряд</div>
+<canvas id="gameCanvas"></canvas>
+<audio id="bgMusic" src="bombandirocrocodilo.mp3" loop></audio>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const bgMusic = document.getElementById('bgMusic');
+
+    canvas.width = 800;
+    canvas.height = 600;
+    const gravity = 0.2;
+    const playerAccel = 0.3;
+    const playerDamping = 0.92;
+    const maxPlayerSpeed = 6;
+    let lastBombDropTime = 0;
+    const bombDropCooldown = 300;
+    let musicStarted = false;
+    let bladeAngle = 0;
+    const bladeRotationSpeed = 0.5;
+
+    const player = {
+        x: canvas.width / 2,
+        y: 100,
+        width: 90,
+        height: 60,
+        vx: 0,
+        vy: 0,
+        crocColor: 'darkgreen',
+        heliColor: '#A9A9A9',
+        laughing: false,
+        laughEndTime: 0,
+        facingLeft: false
+    };
+
+    let bombs = [];
+    const bombImage = new Image();
+    bombImage.src = 'bomb.png';
+    let bombImageLoaded = false;
+    bombImage.onload = () => { bombImageLoaded = true; };
+    bombImage.onerror = () => { console.error("cant load the bomb.png."); }
+
+    const logoImage = new Image();
+    logoImage.src = 'tqhnotoLogo.svg';
+    let logoImageLoaded = false;
+    const logoPos = { x: 10, y: 10 };
+    const logoSize = { width: 100, height: 80 };
+    logoImage.onload = () => { logoImageLoaded = true; };
+    logoImage.onerror = () => { console.error("cant load the tqhnotoLogo.svg."); }
+
+
+    const keys = {
+        ArrowUp: false,
+        ArrowDown: false,
+        ArrowLeft: false,
+        ArrowRight: false,
+        Space: false
+    };
+
+    function playMusic() {
+        if (!musicStarted) {
+            bgMusic.play().then(() => {
+                musicStarted = true;
+            }).catch(error => {
+                 console.log("music cant load because:", error);
+            });
+        }
+    }
+
+    canvas.addEventListener('click', playMusic);
+    window.addEventListener('keydown', (e) => {
+        playMusic();
+        if (keys.hasOwnProperty(e.code)) {
+            keys[e.code] = true;
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+                e.preventDefault();
+            }
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (keys.hasOwnProperty(e.code)) {
+            keys[e.code] = false;
+        }
+    });
+
+    function updatePlayer() {
+        let acceleratingHorizontally = false;
+        if (keys.ArrowUp) player.vy -= playerAccel;
+        if (keys.ArrowDown) player.vy += playerAccel;
+        if (keys.ArrowLeft) {
+             player.vx -= playerAccel;
+             player.facingLeft = true;
+             acceleratingHorizontally = true;
+        }
+        if (keys.ArrowRight) {
+            player.vx += playerAccel;
+            player.facingLeft = false;
+            acceleratingHorizontally = true;
+        }
+
+        player.vx *= playerDamping;
+        player.vy *= playerDamping;
+
+        const speed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
+        if (speed > maxPlayerSpeed) {
+            player.vx = (player.vx / speed) * maxPlayerSpeed;
+            player.vy = (player.vy / speed) * maxPlayerSpeed;
+        }
+        if (!acceleratingHorizontally && Math.abs(player.vx) < 0.1) player.vx = 0;
+         if (Math.abs(player.vy) < 0.1) player.vy = 0;
+
+
+        player.x += player.vx;
+        player.y += player.vy;
+
+        if (player.x - player.width / 2 < 0) { player.x = player.width / 2; player.vx = 0; }
+        if (player.x + player.width / 2 > canvas.width) { player.x = canvas.width - player.width / 2; player.vx = 0; }
+        if (player.y - player.height / 2 < 0) { player.y = player.height / 2; player.vy = 0; }
+        if (player.y + player.height / 2 > canvas.height) { player.y = canvas.height - player.height / 2; player.vy = 0; }
+
+        if (player.laughing && Date.now() > player.laughEndTime) {
+            player.laughing = false;
+        }
+    }
+
+    function dropBomb() {
+        const now = Date.now();
+        if (now > lastBombDropTime + bombDropCooldown) {
+            bombs.push({
+                x: player.x,
+                y: player.y + player.height * 0.4,
+                vy: player.vy + 1
+            });
+            lastBombDropTime = now;
+            player.laughing = true;
+            player.laughEndTime = now + 500;
+        }
+    }
+
+    function updateBombs() {
+        for (let i = bombs.length - 1; i >= 0; i--) {
+            const bomb = bombs[i];
+            bomb.vy += gravity;
+            bomb.y += bomb.vy;
+
+            if (bomb.y > canvas.height + 20) {
+                bombs.splice(i, 1);
+            }
+        }
+    }
+
+    function drawPlayer() {
+        const px = player.x;
+        const py = player.y;
+        const pw = player.width;
+        const ph = player.height;
+        const crocW = pw * 0.7;
+        const crocH = ph * 0.6;
+
+        ctx.save();
+        ctx.translate(px, py);
+        if (player.facingLeft) {
+            ctx.scale(-1, 1);
+        }
+
+        ctx.fillStyle = player.heliColor;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, pw / 2, ph / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ADD8E6';
+        ctx.beginPath();
+        ctx.ellipse(pw * 0.15, -ph * 0.1, pw * 0.25, ph * 0.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+
+        const crocOffsetX = pw * 0.05;
+        const crocOffsetY = ph * 0.1;
+
+        ctx.fillStyle = player.crocColor;
+        ctx.beginPath();
+        ctx.moveTo(crocOffsetX - crocW / 2, crocOffsetY);
+        ctx.lineTo(crocOffsetX - crocW * 0.1, crocOffsetY - crocH * 0.4);
+        ctx.lineTo(crocOffsetX + crocW * 0.2, crocOffsetY - crocH * 0.4);
+        ctx.lineTo(crocOffsetX + crocW * 0.5, crocOffsetY);
+        ctx.lineTo(crocOffsetX + crocW * 0.2, crocOffsetY + crocH * 0.4);
+        ctx.lineTo(crocOffsetX - crocW * 0.1, crocOffsetY + crocH * 0.4);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = '#556B2F';
+        ctx.fillRect(crocOffsetX - crocW * 0.1, crocOffsetY - crocH * 0.45, 7, 3);
+        ctx.fillRect(crocOffsetX + crocW * 0.05, crocOffsetY - crocH * 0.45, 7, 3);
+
+        ctx.fillStyle = 'white';
+        const eyeX = crocOffsetX + crocW * 0.15;
+        const eyeY = crocOffsetY - crocH * 0.1;
+        ctx.beginPath();
+        ctx.arc(eyeX, eyeY, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'black';
+        ctx.beginPath();
+        ctx.arc(eyeX + (player.laughing ? 0 : 1) , eyeY, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (player.laughing) {
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.moveTo(crocOffsetX + crocW * 0.3, crocOffsetY + crocH * 0.1);
+            ctx.lineTo(crocOffsetX + crocW * 0.5, crocOffsetY + crocH * 0.15);
+            ctx.lineTo(crocOffsetX + crocW * 0.3, crocOffsetY + crocH * 0.2);
+            ctx.fill();
+             ctx.fillStyle = 'red';
+            ctx.beginPath();
+            ctx.ellipse(crocOffsetX + crocW * 0.4, crocOffsetY + crocH * 0.15, 3, 1.5, 0, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+             ctx.strokeStyle = 'black';
+             ctx.lineWidth = 1;
+             ctx.beginPath();
+             ctx.moveTo(crocOffsetX + crocW * 0.3, crocOffsetY + crocH * 0.15);
+             ctx.lineTo(crocOffsetX + crocW * 0.5, crocOffsetY + crocH * 0.15);
+             ctx.stroke();
+        }
+
+        ctx.restore();
+
+
+        ctx.save();
+        ctx.translate(px, py - ph * 0.35);
+        ctx.rotate(bladeAngle);
+        ctx.fillStyle = 'grey';
+        ctx.fillRect(-pw * 0.6, -3, pw * 1.2, 6);
+        ctx.fillRect(-3, -pw * 0.6, 6, pw * 1.2);
+        ctx.restore();
+    }
+
+
+    function drawBombs() {
+        if (!bombImageLoaded) {
+            ctx.fillStyle = 'black';
+            bombs.forEach(bomb => {
+                ctx.beginPath();
+                ctx.arc(bomb.x, bomb.y, 10, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        } else {
+             bombs.forEach(bomb => {
+                const bombWidth = 20;
+                const bombHeight = 20;
+                ctx.drawImage(bombImage, bomb.x - bombWidth / 2, bomb.y - bombHeight / 2, bombWidth, bombHeight);
+            });
+        }
+    }
+
+    function drawLogo() {
+         if (logoImageLoaded) {
+            ctx.fillStyle = 'yellow';
+            ctx.fillRect(logoPos.x - 5, logoPos.y - 5, logoSize.width + 10, logoSize.height + 10);
+            ctx.drawImage(logoImage, logoPos.x, logoPos.y, logoSize.width, logoSize.height);
+        } else {
+            ctx.fillStyle = 'yellow';
+            ctx.fillRect(logoPos.x - 5, logoPos.y - 5, logoSize.width + 10, logoSize.height + 10);
+            ctx.fillStyle = 'black';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Logoto zarejda...', logoPos.x + logoSize.width / 2, logoPos.y + logoSize.height / 2);
+        }
+    }
+
+    function gameLoop() {
+        updatePlayer();
+        if (keys.Space) {
+            dropBomb();
+        }
+        updateBombs();
+        bladeAngle += bladeRotationSpeed;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        drawLogo();
+        drawPlayer();
+        drawBombs();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+
+</script>
+
+</body>
+</html>
